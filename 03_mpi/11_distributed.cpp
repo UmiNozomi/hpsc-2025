@@ -24,11 +24,27 @@ int main(int argc, char** argv) {
   int recv_from = (rank + 1) % size;
   int send_to = (rank - 1 + size) % size;
   MPI_Datatype MPI_BODY;
+
   MPI_Type_contiguous(5, MPI_DOUBLE, &MPI_BODY);
   MPI_Type_commit(&MPI_BODY);
+
+  MPI_Win win;
+  MPI_Win_create(jbody, N/size*sizeof(Body), sizeof(Body), 0, MPI_COMM_WORLD, &win);
+  
   for(int irank=0; irank<size; irank++) {
-    MPI_Send(jbody, N/size, MPI_BODY, send_to, 0, MPI_COMM_WORLD);
-    MPI_Recv(jbody, N/size, MPI_BODY, recv_from, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Win_fence(0, win);
+    MPI_Put(
+      jbody,
+      N/size,
+      MPI_BODY,
+      send_to, /* target_disp = 0 */
+      0,
+      N/size, /* count */
+      MPI_BODY, /* datatype */
+      win
+    );
+    MPI_Win_fence(0, win);
+    
     for(int i=0; i<N/size; i++) {
       for(int j=0; j<N/size; j++) {
         double rx = ibody[i].x - jbody[j].x;
@@ -49,5 +65,7 @@ int main(int argc, char** argv) {
       }
     }
   }
+  MPI_Win_free(&win);
+  MPI_Type_free(&MPI_BODY);
   MPI_Finalize();
 }
